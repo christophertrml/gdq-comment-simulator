@@ -5,10 +5,10 @@ import csv
 from datetime import datetime
 import time
 
-def parse_donation(donation_id):
+def get_bids_from_run(run_id):
     try:
         req = urllib.request.Request(
-            "https://gamesdonequick.com/tracker/donation/" + str(donation_id), 
+            "https://gamesdonequick.com/tracker/run/" + str(run_id), 
             data=None, 
             headers={
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.128 Safari/537.36 Shift/4.0.11'
@@ -17,11 +17,9 @@ def parse_donation(donation_id):
     
         f = urllib.request.urlopen(req)
         soup = BeautifulSoup(f.read().decode('utf-8'), 'html.parser')
-        time.sleep(0.5)
-        if 'Object cannot be retrieved' in soup.title.string:
-            raise Exception('Object cannot be retrieved')
         event = re.search('Donation Detail -- (.*)', soup.title.string).group(1)
         content = soup.body.find_all("div")[2]
+
         if '(Anonymous)' in str(content):
             username = '(Anonymous)'
         else:
@@ -29,29 +27,19 @@ def parse_donation(donation_id):
         
         time_received = content.span.string
         donation = re.search('\\$(.*)', str(content.h2)).group(1)
-        tables = content.find_all('table')
-        num_tables = len(tables)
-        if num_tables == 0:
-            comment = ""
-            bids = []
-        if num_tables == 1:
-            if '/tracker/bid' in str(tables[0]):
-                bids = get_bids(tables[0])
+        if content.table:
+            comment = content.table.td.renderContents().strip()
+            if '/tracker/run/' in str(comment):
                 comment = ""
-            else:
-                comment = tables[0].find_all('td')[0].text.strip()
-                bids = []
         else:
-            bids = get_bids(tables[1])
-            comment = tables[0].find_all('td')[0].text.strip()
+            comment = ""
         return {
             'donation_id': donation_id,
             'event': event,
             'username': username,
             'time_received':time_received,
             'donation': donation,
-            'comment': comment,
-            'bids': bids
+            'comment': comment
         }
     except Exception as e:
         return {
@@ -59,26 +47,8 @@ def parse_donation(donation_id):
             'error': e
         }
 
-def get_bids(tables):
-    trs = tables.find_all('tr')
-    bids = []
-    for row in trs:
-        tds = row.find_all('td')
-        if len(tds) != 3:
-            continue 
-        run_id = re.search('/tracker/run/(.*)', tds[0].a['href']).group(1)
-        bid_id = re.search('/tracker/bid/(.*)', tds[1].a['href']).group(1)
-        amount = tds[2].string
-        bids.append(
-            {
-                'run_id': run_id,
-                'bid_id': bid_id,
-                'amount': amount.strip()[1:]
-            }
-        )
-    return bids
-    
-for donation_id in range(1,665789): #665789
+
+for donation_id in range(1,765590): #665590
     donation = parse_donation(donation_id)
     if 'error' in donation:
         with open('errors.csv', 'a+', newline='', encoding='utf-8') as errorfile:
@@ -92,5 +62,4 @@ for donation_id in range(1,665789): #665789
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writerow(donation)
         print('donation id ' + str(donation_id) + ' finished.')
-    
-
+    time.sleep(0.5)

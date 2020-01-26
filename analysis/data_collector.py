@@ -1,8 +1,10 @@
 from collections import defaultdict
 from datetime import datetime
+from lxml import html
 import csv
+import json
 
-def get_donations():
+def get_speedruns():
 
     with open('..\\prizes.csv', newline='') as prize_file:
         next(prize_file)
@@ -43,12 +45,10 @@ def get_donations():
                 'description': run[5]
             }
 
-    current_run_index_pointer = 0
-
     with open('..\\comments_bak.csv', newline='', encoding='utf-8') as comment_file:
         next(comment_file)
         comments = csv.reader(comment_file)
-        comment_results = []
+        
         start_time_index = {}
         end_time_index = {}
         for run_id, val in run_id_to_prize_mapping.items():
@@ -68,8 +68,11 @@ def get_donations():
                 'username': comment[2],
                 'time_received': datetime.strptime(comment[3], "%m/%d/%Y %H:%M:%S %z"), 
                 'donation': comment[4],
-                'comment': comment[5]
+                'comment': ''
             }
+            if comment[5] and not comment[5].isspace():
+                commentObj['comment'] = html.fromstring(comment[5]).text_content()
+
             comment_time = commentObj['time_received']
             if not closest_start_run_time:
                 closest_start_run_time = min(start_time_index.keys(), key=lambda d: abs(d - comment_time))
@@ -79,7 +82,7 @@ def get_donations():
                 closest_end_run_id = end_time_index[closest_end_run_time]
             
             if closest_start_run_time <= comment_time <= closest_end_run_time:
-                commentObj['speedrun'] = run_id_to_prize_mapping[closest_start_run_id]
+                safe_append_comment_to_run(run_id_to_prize_mapping, closest_start_run_id, commentObj)
             else:
                 
                 closest_start_run_time = min(start_time_index.keys(), key=lambda d: abs(d - comment_time))
@@ -90,15 +93,20 @@ def get_donations():
 
                 closer_game_time = min([closest_start_run_time,closest_end_run_time], key=lambda d: abs(d - comment_time))
                 if closer_game_time == closest_start_run_time:
-                    commentObj['speedrun'] = run_id_to_prize_mapping[closest_start_run_id]
+                    safe_append_comment_to_run(run_id_to_prize_mapping, closest_start_run_id, commentObj)
                 else:
-                    commentObj['speedrun'] = run_id_to_prize_mapping[closest_end_run_id]
+                    safe_append_comment_to_run(run_id_to_prize_mapping, closest_end_run_id, commentObj)
 
-            comment_results.append(commentObj)
             i = i + 1
             if i % 1000 == 0:
                 print(i)
+    return run_id_to_prize_mapping
 
-            if i > 15000:
-                break
-        return comment_results
+def get_speedruns_from_json():
+    with open('speedruns.json', encoding='utf8') as json_file:
+        return json.load(json_file)
+
+def safe_append_comment_to_run(run_id_mapping, run_id_to_safe_append_to, comment_object):
+    if not 'donations' in run_id_mapping[run_id_to_safe_append_to]:
+        run_id_mapping[run_id_to_safe_append_to]['donations'] = []
+    run_id_mapping[run_id_to_safe_append_to]['donations'].append(comment_object)
