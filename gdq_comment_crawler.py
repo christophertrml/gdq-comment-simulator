@@ -86,7 +86,7 @@ def get_bids(tables):
         )
     return bids
     
-for donation_id in range(277325,665790): #665790
+for donation_id in range(549709,665790): #665790
     donation = parse_donation(donation_id)
     if 'error' in donation:
         with open('errors.csv', 'a+', newline='', encoding='utf-8') as errorfile:

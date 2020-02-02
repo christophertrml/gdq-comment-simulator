@@ -4,3 +4,5 @@ __pycache__/
 project/
 target/
 .idea/
+.metals/
+.vscode/
