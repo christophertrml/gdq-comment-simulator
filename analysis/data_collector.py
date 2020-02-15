@@ -3,6 +3,7 @@ from datetime import datetime
 from lxml import html
 import csv
 import json
+from re import sub
 
 def get_speedruns():
 
@@ -44,8 +45,30 @@ def get_speedruns():
                 'game': run[4],
                 'description': run[5]
             }
+            run_id_to_prize_mapping[run_id]['bids'] = []
+    bidObjs = {}
+    with open('..\\bids.csv', newline='') as bid_file:
+        next(bid_file)
+        bids = csv.reader(bid_file)
+        bidObjs = {}
+        for bid in bids:
+            bid_id = int(bid[0])
+            parent_bid_string = bid[5]
+            parent_bid_ids = []
+            if parent_bid_string:
+                parent_bid_ids = parent_bid_string.split('|')
+            
+            bidObjs[bid_id] = {
+                'bid_id': bid_id,
+                'name': bid[1],
+                'description': bid[2],
+                'amount': get_amount(bid[3]),
+                'goal': get_amount(bid[4]),
+                'parent_bid_ids': parent_bid_ids
+            }
 
-    with open('..\\comments_bak.csv', newline='', encoding='utf-8') as comment_file:
+
+    with open('..\\comments.csv', newline='', encoding='utf-8') as comment_file:
         next(comment_file)
         comments = csv.reader(comment_file)
         
@@ -60,18 +83,52 @@ def get_speedruns():
         closest_start_run_id = None
         closest_end_run_time = None
         closest_end_run_id = None
-        for comment in comments:
-
+        for comment in comments: 
             commentObj = {
                 'donation_id': int(comment[0]),
                 'event': comment[1],
                 'username': comment[2],
-                'time_received': datetime.strptime(comment[3], "%m/%d/%Y %H:%M:%S %z"), 
-                'donation': comment[4],
+                'userid': comment[3],
+                'time_received': datetime.strptime(comment[4], "%m/%d/%Y %H:%M:%S %z"), 
+                'donation': get_amount(comment[5]),
                 'comment': ''
             }
-            if comment[5] and not comment[5].isspace():
-                commentObj['comment'] = html.fromstring(comment[5]).text_content()
+
+            attached_bids = []
+            bid_str = comment[7] #bid_id=169|run_id=14|amount=400.00~bid_id=303|run_id=67|amount=100.00
+            if bid_str:
+                inner_bids = bid_str.split("~")
+                for inner_bid in inner_bids:
+                    bid_components = inner_bid.split("|")
+                    run_id_parts = bid_components[1].split("=")
+                    if run_id_parts.count == 2:
+                        run_id = int(run_id_parts[1])
+                    else:
+                        run_id = 0
+
+                    attached_bids.append({
+                        'bid_id': int(bid_components[0].split("=")[1]),
+                        'run_id': run_id,
+                        'amount': get_amount(bid_components[2].split("=")[1])
+                    })
+
+            for attached_bid in attached_bids:
+                if int(attached_bid['bid_id']) not in bidObjs:
+                    continue
+                if attached_bid['run_id'] == 0:
+                    continue
+                real_bid = bidObjs[int(attached_bid['bid_id'])]
+                run_bids = run_id_to_prize_mapping[attached_bid['run_id']]['bids']
+                if real_bid in run_bids:
+                    continue
+                run_bids.append(real_bid)
+                
+            commentObj['bids'] = attached_bids
+            if comment[5] and not comment[6].isspace():
+                try:
+                    commentObj['comment'] = html.fromstring(comment[6]).text_content()
+                except:
+                    pass
 
             comment_time = commentObj['time_received']
             if not closest_start_run_time:
@@ -102,6 +159,14 @@ def get_speedruns():
                 print(i)
     return run_id_to_prize_mapping
 
+def get_amount(maybe_curreny_str):
+    if not maybe_curreny_str:
+        return 0.0
+    parsed_currency = sub(r'[^\d.]', '', maybe_curreny_str)
+    if not parsed_currency:
+        return 0.0
+    return float(parsed_currency)
+
 def get_speedruns_from_json():
     with open('speedruns.json', encoding='utf8') as json_file:
         return json.load(json_file)
@@ -110,3 +175,7 @@ def safe_append_comment_to_run(run_id_mapping, run_id_to_safe_append_to, comment
     if not 'donations' in run_id_mapping[run_id_to_safe_append_to]:
         run_id_mapping[run_id_to_safe_append_to]['donations'] = []
     run_id_mapping[run_id_to_safe_append_to]['donations'].append(comment_object)
+
+def myconverter(o):
+    if isinstance(o, datetime):
+        return o.__str__()
